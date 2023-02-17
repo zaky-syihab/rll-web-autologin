@@ -1,21 +1,26 @@
-import { getCookieById, getDomain } from './utils/index'
+import { getCookieById, getDomain, isMacOS } from './utils/index'
 import { IToken } from './interface'
 import puppeteer, { Protocol } from 'puppeteer'
 import { testIdSelector, delay } from './utils'
-import { config } from './config'
+import parseArgs, { ParsedArgs } from 'minimist'
 
-const getToken = async (): Promise<IToken> => {
+const getToken = async (
+  email: string,
+  password: string,
+  loginUrl: string,
+  verbose = false,
+): Promise<IToken> => {
   try {
     console.log('Getting tokens...')
     const browser = await puppeteer.launch()
     const page = await browser.newPage()
-    const url = config.loginUrl
+    const url = loginUrl
 
     await page.goto(url)
 
     //   Login
-    await page.type(testIdSelector('input-username'), config.email)
-    await page.type(testIdSelector('input-password'), config.password)
+    await page.type(testIdSelector('input-username'), email)
+    await page.type(testIdSelector('input-password'), password)
     await page.click(testIdSelector('button-submit'))
 
     await delay(2000)
@@ -36,7 +41,7 @@ const getToken = async (): Promise<IToken> => {
     }
   } catch (error) {
     console.error('ERROR: Failed to get tokens')
-    config.verbose && console.error(error)
+    verbose && console.error(error)
 
     return {
       access_token: '',
@@ -46,22 +51,28 @@ const getToken = async (): Promise<IToken> => {
   }
 }
 
-const setToken = async (tokens: IToken) => {
+const setToken = async (
+  tokens: IToken,
+  targetUrl: string,
+  verbose = false,
+) => {
   try {
     console.log('Setting tokens...')
     const browser = await puppeteer.launch({
       headless: false,
-      executablePath:
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      executablePath: isMacOS()
+        ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+        : undefined,
       defaultViewport: null,
       args: [
         '--start-maximized',
+        // Does not work on Apple Silicon (M1)
         // "--user-data-dir=/Users/zsyihab/Library/Application Support/Google/Chrome",
       ],
     })
     const page = await browser.newPage()
 
-    const url = config.targetUrl
+    const url = targetUrl
     const domain = getDomain(url)
 
     await page.goto(url)
@@ -82,17 +93,25 @@ const setToken = async (tokens: IToken) => {
     page.reload()
   } catch (error) {
     console.error('ERROR: Failed to set tokens')
-    config.verbose && console.error(error)
+    verbose && console.error(error)
 
     return
   }
 }
 
 ;(async () => {
-  const tokens = await getToken()
+  const {
+    u: email,
+    p: password,
+    l: loginUrl,
+    t: targetUrl,
+    v: verbose,
+  }: ParsedArgs = parseArgs(process.argv.slice(2))
+
+  const tokens = await getToken(email, password, loginUrl, verbose)
 
   if (tokens.access_token && tokens.refresh_token) {
-    await setToken(tokens)
+    await setToken(tokens, targetUrl, verbose)
   } else {
     console.error('ERROR: Token does not exist')
   }

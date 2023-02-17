@@ -17,3 +17,5 @@ export const getCookieById = (
   }
   return ''
 }
+
+export const isMacOS = () => process.platform === 'darwin'
